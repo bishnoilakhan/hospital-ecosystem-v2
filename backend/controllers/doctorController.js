@@ -2,11 +2,22 @@
 const { isValidObjectId } = require("mongoose");
 const Doctor = require("../models/Doctor");
 const User = require("../models/User");
+const Hospital = require("../models/Hospital");
 
 const getDoctors = async (req, res) => {
   try {
-    const doctors = await Doctor.find()
-      .select("department experience availability userId")
+    const { hospitalId } = req.query;
+
+    const filter = {};
+    if (hospitalId) {
+      if (!isValidObjectId(hospitalId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      filter.hospitalId = hospitalId;
+    }
+
+    const doctors = await Doctor.find(filter)
+      .select("department experience availability userId hospitalId")
       .populate("userId", "name email");
 
     const formatted = doctors.map((doctor) => ({
@@ -16,7 +27,8 @@ const getDoctors = async (req, res) => {
       userId: doctor.userId?._id || null,
       department: doctor.department,
       experience: doctor.experience,
-      availability: doctor.availability
+      availability: doctor.availability,
+      hospitalId: doctor.hospitalId || null
     }));
 
     return res.status(200).json({ doctors: formatted });
@@ -31,10 +43,12 @@ const getDoctorById = async (req, res) => {
 
 const createDoctorProfile = async (req, res) => {
   try {
-    const { userId, department, experience, availability } = req.body;
+    const { userId, department, experience, availability, hospitalId } = req.body;
 
     if (!userId || !department || !experience || !availability) {
-      return res.status(400).json({ message: "userId, department, experience, and availability are required" });
+      return res
+        .status(400)
+        .json({ message: "userId, department, experience, and availability are required" });
     }
 
     if (!isValidObjectId(userId)) {
@@ -51,11 +65,33 @@ const createDoctorProfile = async (req, res) => {
       return res.status(409).json({ message: "Doctor profile already exists for this user" });
     }
 
+    let resolvedHospitalId = hospitalId;
+    if (!resolvedHospitalId) {
+      const defaultHospital = await Hospital.findOne().select("_id");
+      if (defaultHospital) {
+        resolvedHospitalId = defaultHospital._id;
+      }
+    }
+
+    if (!resolvedHospitalId) {
+      return res.status(400).json({ message: "hospitalId is required" });
+    }
+
+    if (!isValidObjectId(resolvedHospitalId)) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+
+    const hospital = await Hospital.findById(resolvedHospitalId).select("_id");
+    if (!hospital) {
+      return res.status(404).json({ message: "Hospital not found" });
+    }
+
     const doctor = await Doctor.create({
       userId,
       department,
       experience,
-      availability
+      availability,
+      hospitalId: resolvedHospitalId
     });
 
     return res.status(201).json({

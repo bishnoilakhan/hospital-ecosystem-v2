@@ -135,7 +135,8 @@ const loginUser = async (req, res) => {
     return res.status(200).json({
       message: "Login successful",
       token,
-      role: user.role
+      role: user.role,
+      hospitalId: user.hospitalId || null
     });
   } catch (error) {
     return res.status(500).json({ message: "Login failed", error: error.message });

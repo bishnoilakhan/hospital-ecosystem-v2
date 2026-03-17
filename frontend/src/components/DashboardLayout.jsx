@@ -34,12 +34,18 @@ const DashboardLayout = ({ title, children }) => {
             <p className="mt-1 text-xs text-blue-200">Care Console</p>
           </div>
           <nav className="flex flex-col gap-2">
-            {role === "patient" && <SidebarLink to="/patient" label="Patient Dashboard" />}
-            {role === "doctor" && <SidebarLink to="/doctor" label="Doctor Dashboard" />}
-            {role === "receptionist" && (
-              <SidebarLink to="/reception" label="Reception Dashboard" />
+            {role === "system_admin" ? (
+              <SidebarLink to="/system-admin" label="System Dashboard" />
+            ) : (
+              <>
+                {role === "patient" && <SidebarLink to="/patient" label="Patient Dashboard" />}
+                {role === "doctor" && <SidebarLink to="/doctor" label="Doctor Dashboard" />}
+                {role === "receptionist" && (
+                  <SidebarLink to="/reception" label="Reception Dashboard" />
+                )}
+                {role === "admin" && <SidebarLink to="/admin" label="Admin Dashboard" />}
+              </>
             )}
-            {role === "admin" && <SidebarLink to="/admin" label="Admin Dashboard" />}
           </nav>
         </aside>
 

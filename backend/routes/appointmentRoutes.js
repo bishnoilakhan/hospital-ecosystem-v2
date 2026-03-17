@@ -5,6 +5,8 @@ const {
   getDoctorAppointments,
   checkInPatient,
   completeAppointment,
+  callNextPatient,
+  updatePriority,
   getTodayAppointments,
   getPatientAppointments
 } = require("../controllers/appointmentController");
@@ -36,6 +38,18 @@ router.put(
   protect,
   authorizeRoles("doctor"),
   completeAppointment
+);
+router.put(
+  "/appointment/call-next",
+  protect,
+  authorizeRoles("doctor"),
+  callNextPatient
+);
+router.put(
+  "/appointment/priority/:appointmentId",
+  protect,
+  authorizeRoles("doctor"),
+  updatePriority
 );
 router.get(
   "/appointments/today",

@@ -6,7 +6,8 @@ import toast from "react-hot-toast";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const auth = useAuth() || {};
+  const login = auth.login || (() => {});
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -16,14 +17,16 @@ const Login = () => {
     setSubmitting(true);
     try {
       const data = await loginUser({ email, password });
-      login(data.token, data.role);
+      login(data?.token, data?.role, data?.hospitalId);
       toast.success("Login successful");
 
-      if (data.role === "patient") navigate("/patient");
-      if (data.role === "doctor") navigate("/doctor");
-      if (data.role === "receptionist") navigate("/reception");
-      if (data.role === "admin") navigate("/admin");
+      if (data?.role === "system_admin") navigate("/system-admin");
+      else if (data?.role === "admin") navigate("/admin");
+      else if (data?.role === "doctor") navigate("/doctor");
+      else if (data?.role === "receptionist") navigate("/reception");
+      else navigate("/patient");
     } catch (error) {
+      console.error("Login error:", error);
       if (error?.status === 401) {
         toast.error("Invalid email or password");
       } else {
@@ -33,6 +36,10 @@ const Login = () => {
       setSubmitting(false);
     }
   };
+
+  if (!email && !password) {
+    // state is initialized but keep a safe fallback
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">

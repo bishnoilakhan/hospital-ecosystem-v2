@@ -1,4 +1,5 @@
-const API_BASE_URL = "http://localhost:5001/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 const handleResponse = async (response) => {
   const data = await response.json();
@@ -104,6 +105,28 @@ export const completeAppointment = async (appointmentId, token) => {
   return handleResponse(response);
 };
 
+export const callNextPatient = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/appointment/call-next`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const updateAppointmentPriority = async (appointmentId, priorityScore, token) => {
+  const response = await fetch(`${API_BASE_URL}/appointment/priority/${appointmentId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ priorityScore })
+  });
+  return handleResponse(response);
+};
+
 export const createDoctorProfile = async (payload, token) => {
   const response = await fetch(`${API_BASE_URL}/admin/create-doctor`, {
     method: "POST",
@@ -155,8 +178,9 @@ export const updateUser = async (userId, payload, token) => {
   return handleResponse(response);
 };
 
-export const getDoctors = async (token) => {
-  const response = await fetch(`${API_BASE_URL}/doctors`, {
+export const getDoctors = async (token, hospitalId = "") => {
+  const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : "";
+  const response = await fetch(`${API_BASE_URL}/doctors${query}`, {
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -169,6 +193,48 @@ export const getDoctorUsersWithoutProfile = async (token) => {
     headers: {
       Authorization: `Bearer ${token}`
     }
+  });
+  return handleResponse(response);
+};
+
+export const getHospitals = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/hospitals`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const getHospitalById = async (hospitalId, token) => {
+  const response = await fetch(`${API_BASE_URL}/hospitals/${hospitalId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const createHospital = async (payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/admin/hospitals`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(response);
+};
+
+export const createHospitalAdmin = async (payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/admin/create-hospital-admin`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
   });
   return handleResponse(response);
 };
@@ -236,6 +302,47 @@ export const getReceptionStats = async (token) => {
 
 export const registerPatientByReception = async (payload, token) => {
   const response = await fetch(`${API_BASE_URL}/patients/reception/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(response);
+};
+
+export const getAccessRequests = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/access/requests`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const approveAccessRequest = async (requestId, token) => {
+  const response = await fetch(`${API_BASE_URL}/access/approve/${requestId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const rejectAccessRequest = async (requestId, token) => {
+  const response = await fetch(`${API_BASE_URL}/access/reject/${requestId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return handleResponse(response);
+};
+
+export const requestAccess = async (payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/access/request`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

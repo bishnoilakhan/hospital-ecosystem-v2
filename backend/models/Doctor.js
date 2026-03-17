@@ -22,6 +22,11 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true
+    },
+    hospitalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Hospital",
+      required: true
     }
   },
   { timestamps: true }

@@ -6,7 +6,11 @@ import {
   getPatientProfile,
   getPatientRecords,
   getPatientStats,
-  triageSymptoms
+  triageSymptoms,
+  getAccessRequests,
+  approveAccessRequest,
+  rejectAccessRequest,
+  getHospitals
 } from "../services/api";
 import MedicalTimeline from "../components/MedicalTimeline";
 import DashboardLayout from "../components/DashboardLayout";
@@ -16,6 +20,8 @@ import toast from "react-hot-toast";
 import StatsCard from "../components/StatsCard";
 import StatsSkeleton from "../components/StatsSkeleton";
 import { formatDepartment, formatDoctorName, formatLabel, formatName } from "../utils/format";
+import EmergencyBadge from "../components/EmergencyBadge";
+import { getPriorityColor, getPriorityLabel, isEmergency } from "../utils/priority";
 
 const PatientDashboard = () => {
   const { token } = useAuth();
@@ -26,7 +32,11 @@ const PatientDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
+  const [selectedHospital, setSelectedHospital] = useState("");
   const [records, setRecords] = useState([]);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
   const [triageInput, setTriageInput] = useState("");
   const [triageResult, setTriageResult] = useState(null);
   const [booking, setBooking] = useState(false);
@@ -128,6 +138,42 @@ const PatientDashboard = () => {
     }
   };
 
+  const fetchAccessRequests = async () => {
+    if (!token) {
+      setAccessRequests([]);
+      return;
+    }
+    setLoadingRequests(true);
+    try {
+      const data = await getAccessRequests(token);
+      setAccessRequests(data.data || []);
+    } catch (error) {
+      toast.error("Failed to load access requests");
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const handleApproveRequest = async (requestId) => {
+    try {
+      await approveAccessRequest(requestId, token);
+      setAccessRequests((prev) => prev.filter((request) => request._id !== requestId));
+      toast.success("Access granted");
+    } catch (error) {
+      toast.error("Failed to approve request");
+    }
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    try {
+      await rejectAccessRequest(requestId, token);
+      setAccessRequests((prev) => prev.filter((request) => request._id !== requestId));
+      toast.success("Access rejected");
+    } catch (error) {
+      toast.error("Failed to reject request");
+    }
+  };
+
   const fetchAppointments = async () => {
     if (!token) {
       setAppointments([]);
@@ -146,10 +192,10 @@ const PatientDashboard = () => {
     fetchMedicalRecords();
   };
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = async (hospitalId = "") => {
     if (!token) return;
     try {
-      const data = await getDoctors(token);
+      const data = await getDoctors(token, hospitalId);
       setDoctors(data.doctors || []);
       if (!appointmentForm.doctorId && data.doctors?.length) {
         setAppointmentForm((prev) => ({ ...prev, doctorId: data.doctors[0]._id }));
@@ -159,12 +205,34 @@ const PatientDashboard = () => {
     }
   };
 
+  const fetchHospitals = async () => {
+    if (!token) return;
+    try {
+      const data = await getHospitals(token);
+      setHospitals(data.data || []);
+      if (!selectedHospital && data.data?.length) {
+        setSelectedHospital(data.data[0]._id);
+        fetchDoctors(data.data[0]._id);
+      }
+    } catch (error) {
+      toast.error("Failed to load hospitals");
+    }
+  };
+
+  const handleHospitalChange = async (event) => {
+    const hospitalId = event.target.value;
+    setSelectedHospital(hospitalId);
+    setAppointmentForm((prev) => ({ ...prev, doctorId: "" }));
+    await fetchDoctors(hospitalId);
+  };
+
   useEffect(() => {
     fetchProfile();
     fetchStats();
-    fetchDoctors();
+    fetchHospitals();
     fetchMedicalRecords();
     fetchAppointments();
+    fetchAccessRequests();
   }, [token]);
 
   const handleTriage = async (event) => {
@@ -225,6 +293,53 @@ const PatientDashboard = () => {
 
         <div className="rounded-lg bg-white p-4 shadow">
           <h2 className="mb-3 text-lg font-semibold text-slate-900">
+            {formatLabel("Access Requests")}
+          </h2>
+          {loadingRequests ? (
+            <p className="text-sm text-slate-500">Loading access requests...</p>
+          ) : accessRequests.length === 0 ? (
+            <p className="text-sm text-slate-500">No pending access requests</p>
+          ) : (
+            <div className="grid gap-3">
+              {accessRequests.map((request) => (
+                <div
+                  key={request._id}
+                  className="rounded bg-white p-4 shadow"
+                >
+                  <p className="text-sm text-slate-700">
+                    <span className="font-semibold">Hospital:</span>{" "}
+                    {request.hospitalName || "Unknown Hospital"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Requested{" "}
+                    {request.createdAt
+                      ? new Date(request.createdAt).toLocaleString()
+                      : "Date not set"}
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                      onClick={() => handleApproveRequest(request._id)}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300"
+                      onClick={() => handleRejectRequest(request._id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">
             {formatLabel("Upcoming Appointments")}
           </h2>
           {upcomingAppointments.length === 0 ? (
@@ -232,9 +347,19 @@ const PatientDashboard = () => {
           ) : (
             <div className="grid gap-3">
               {upcomingAppointments.map((appointment, index) => (
-                <div key={`${appointment.date}-${index}`} className="border-b border-slate-100 pb-3">
+                <div
+                  key={`${appointment.date}-${index}`}
+                  className={
+                    isEmergency(appointment.priorityScore || 0)
+                      ? "rounded border border-red-200 bg-red-50 p-3"
+                      : "border-b border-slate-100 pb-3"
+                  }
+                >
                   <p className="text-sm font-semibold text-slate-900">
                     {formatDoctorName(appointment.doctorName || "Unknown")}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {formatLabel("Hospital")}: {appointment.hospitalName || "Unknown"}
                   </p>
                   <p className="text-sm text-slate-600">
                     {appointment.department
@@ -246,6 +371,10 @@ const PatientDashboard = () => {
                       ? new Date(appointment.date).toLocaleString()
                       : "Date not set"}
                   </p>
+                  <p className="text-sm text-gray-600">
+                    {formatLabel("Your position in queue")}: Queue #
+                    {appointment.queueNumber || "—"}
+                  </p>
                   <span
                     className={`inline-block rounded px-2 py-1 text-xs font-semibold ${getStatusStyle(
                       appointment.status
@@ -253,6 +382,14 @@ const PatientDashboard = () => {
                   >
                     {appointment.status}
                   </span>
+                  <span
+                    className={`ml-2 inline-block rounded px-2 py-1 text-xs text-white ${getPriorityColor(
+                      appointment.priorityScore || 0
+                    )}`}
+                  >
+                    {getPriorityLabel(appointment.priorityScore || 0)}
+                  </span>
+                  <EmergencyBadge priorityScore={appointment.priorityScore || 0} />
                 </div>
               ))}
             </div>
@@ -268,9 +405,19 @@ const PatientDashboard = () => {
           ) : (
             <div className="grid gap-3">
               {pastAppointments.map((appointment, index) => (
-                <div key={`${appointment.date}-${index}`} className="border-b border-slate-100 pb-3">
+                <div
+                  key={`${appointment.date}-${index}`}
+                  className={
+                    isEmergency(appointment.priorityScore || 0)
+                      ? "rounded border border-red-200 bg-red-50 p-3"
+                      : "border-b border-slate-100 pb-3"
+                  }
+                >
                   <p className="text-sm font-semibold text-slate-900">
                     {formatDoctorName(appointment.doctorName || "Unknown")}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {formatLabel("Hospital")}: {appointment.hospitalName || "Unknown"}
                   </p>
                   <p className="text-sm text-slate-600">
                     {appointment.department
@@ -282,6 +429,10 @@ const PatientDashboard = () => {
                       ? new Date(appointment.date).toLocaleString()
                       : "Date not set"}
                   </p>
+                  <p className="text-sm text-gray-600">
+                    {formatLabel("Your position in queue")}: Queue #
+                    {appointment.queueNumber || "—"}
+                  </p>
                   <span
                     className={`inline-block rounded px-2 py-1 text-xs font-semibold ${getStatusStyle(
                       appointment.status
@@ -289,6 +440,14 @@ const PatientDashboard = () => {
                   >
                     {appointment.status}
                   </span>
+                  <span
+                    className={`ml-2 inline-block rounded px-2 py-1 text-xs text-white ${getPriorityColor(
+                      appointment.priorityScore || 0
+                    )}`}
+                  >
+                    {getPriorityLabel(appointment.priorityScore || 0)}
+                  </span>
+                  <EmergencyBadge priorityScore={appointment.priorityScore || 0} />
                 </div>
               ))}
             </div>
@@ -317,6 +476,23 @@ const PatientDashboard = () => {
             description="Schedule a visit with the right specialist."
           >
             <form onSubmit={handleCreateAppointment} className="grid gap-3">
+              <select
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={selectedHospital}
+                onChange={handleHospitalChange}
+                required
+                disabled={hospitals.length === 0}
+              >
+                {hospitals.length === 0 ? (
+                  <option>No hospitals available</option>
+                ) : (
+                  hospitals.map((hospital) => (
+                    <option key={hospital._id} value={hospital._id}>
+                      {hospital.name}
+                    </option>
+                  ))
+                )}
+              </select>
               <select
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 name="doctorId"

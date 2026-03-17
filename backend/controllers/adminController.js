@@ -5,6 +5,7 @@ const User = require("../models/User");
 const Appointment = require("../models/Appointment");
 const MedicalRecord = require("../models/MedicalRecord");
 const AuditLog = require("../models/AuditLog");
+const Hospital = require("../models/Hospital");
 
 const createStaffUser = async (req, res) => {
   try {
@@ -14,9 +15,86 @@ const createStaffUser = async (req, res) => {
       return res.status(400).json({ message: "name, email, password, and role are required" });
     }
 
+    const requester = await User.findById(req.user.id).select("role hospitalId");
+    if (!requester) {
+      return res.status(404).json({ message: "Requesting user not found" });
+    }
+
     const allowedRoles = ["doctor", "receptionist", "admin"];
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({ message: "Invalid staff role" });
+    }
+
+    if (requester.role === "admin" && role === "admin") {
+      return res.status(403).json({ message: "Hospital admins cannot create admin users" });
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({ message: "User already exists with this email" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    let resolvedHospitalId = null;
+    if (requester.role === "admin") {
+      if (!requester.hospitalId) {
+        return res.status(400).json({ message: "Admin hospital not set" });
+      }
+      resolvedHospitalId = requester.hospitalId;
+    } else if (requester.role === "system_admin") {
+      if (role === "admin" || role === "doctor" || role === "receptionist") {
+        resolvedHospitalId = req.body.hospitalId || null;
+        if (!resolvedHospitalId) {
+          return res.status(400).json({ message: "hospitalId is required" });
+        }
+      }
+    }
+
+    if (resolvedHospitalId) {
+      if (!isValidObjectId(resolvedHospitalId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const hospital = await Hospital.findById(resolvedHospitalId).select("_id");
+      if (!hospital) {
+        return res.status(404).json({ message: "Hospital not found" });
+      }
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+      hospitalId: resolvedHospitalId
+    });
+
+    return res.status(201).json({
+      message: "Staff user created",
+      userId: user._id
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to create staff user", error: error.message });
+  }
+};
+
+const createHospitalAdmin = async (req, res) => {
+  try {
+    const { name, email, password, hospitalId } = req.body;
+
+    if (!name || !email || !password || !hospitalId) {
+      return res.status(400).json({
+        message: "name, email, password, and hospitalId are required"
+      });
+    }
+
+    if (!isValidObjectId(hospitalId)) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+
+    const hospital = await Hospital.findById(hospitalId).select("_id");
+    if (!hospital) {
+      return res.status(404).json({ message: "Hospital not found" });
     }
 
     const existingUser = await User.findOne({ email });
@@ -30,15 +108,16 @@ const createStaffUser = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      role
+      role: "admin",
+      hospitalId
     });
 
     return res.status(201).json({
-      message: "Staff user created",
+      message: "Hospital admin created",
       userId: user._id
     });
   } catch (error) {
-    return res.status(500).json({ message: "Failed to create staff user", error: error.message });
+    return res.status(500).json({ message: "Failed to create hospital admin", error: error.message });
   }
 };
 
@@ -70,8 +149,18 @@ const getSystemStats = async (req, res) => {
 
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find()
-      .select("name email role active")
+    const requester = await User.findById(req.user.id).select("role hospitalId");
+    if (!requester) {
+      return res.status(404).json({ message: "Requesting user not found" });
+    }
+
+    const filter =
+      requester.role === "system_admin"
+        ? {}
+        : { hospitalId: requester.hospitalId || null };
+
+    const users = await User.find(filter)
+      .select("name email role active hospitalId")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({ users });
@@ -87,14 +176,28 @@ const updateUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid id" });
     }
 
-    const targetUser = await User.findById(id).select("role email");
+    const targetUser = await User.findById(id).select("role email hospitalId");
     if (!targetUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const requester = await User.findById(req.user.id).select("role hospitalId");
+    if (!requester) {
+      return res.status(404).json({ message: "Requesting user not found" });
+    }
+
+    if (requester.role === "admin") {
+      if (!requester.hospitalId) {
+        return res.status(403).json({ message: "Admin hospital not set" });
+      }
+      if (targetUser.hospitalId?.toString() !== requester.hospitalId.toString()) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     if (
       targetUser.role === "admin" &&
-      req.user?.role === "admin" &&
+      requester.role === "admin" &&
       targetUser._id.toString() !== req.user.id
     ) {
       return res.status(403).json({
@@ -154,4 +257,11 @@ const getAuditLogs = async (req, res) => {
   }
 };
 
-module.exports = { createStaffUser, getSystemStats, getUsers, updateUser, getAuditLogs };
+module.exports = {
+  createStaffUser,
+  createHospitalAdmin,
+  getSystemStats,
+  getUsers,
+  updateUser,
+  getAuditLogs
+};

@@ -1,46 +1,63 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 
 const AuthContext = createContext(null);
 
-const getStoredAuth = () => {
-  const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
-  return { token, role };
-};
-
 export const AuthProvider = ({ children }) => {
-  const [auth, setAuth] = useState(getStoredAuth());
+  let initialToken = null;
+  let initialRole = null;
+  let initialHospitalId = null;
 
-  const login = (token, role) => {
-    localStorage.setItem("token", token);
-    localStorage.setItem("role", role);
-    setAuth({ token, role });
+  try {
+    initialToken = localStorage.getItem("token");
+    initialRole = localStorage.getItem("role");
+    initialHospitalId = localStorage.getItem("hospitalId");
+  } catch (error) {
+    console.error("localStorage error:", error);
+  }
+
+  const [token, setToken] = useState(initialToken);
+  const [role, setRole] = useState(initialRole);
+  const [hospitalId, setHospitalId] = useState(initialHospitalId);
+
+  const login = (nextToken, nextRole, nextHospitalId) => {
+    try {
+      localStorage.setItem("token", nextToken);
+      localStorage.setItem("role", nextRole);
+      if (nextHospitalId) {
+        localStorage.setItem("hospitalId", nextHospitalId);
+      }
+    } catch (error) {
+      console.error("localStorage set error:", error);
+    }
+
+    setToken(nextToken);
+    setRole(nextRole);
+    setHospitalId(nextHospitalId || null);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    setAuth({ token: null, role: null });
+    try {
+      localStorage.clear();
+    } catch (error) {
+      console.error("localStorage clear error:", error);
+    }
+
+    setToken(null);
+    setRole(null);
+    setHospitalId(null);
   };
 
-  const value = useMemo(
-    () => ({
-      token: auth.token,
-      role: auth.role,
-      isAuthenticated: Boolean(auth.token),
-      login,
-      logout
-    }),
-    [auth]
+  return (
+    <AuthContext.Provider value={{ token, role, hospitalId, login, logout }}>
+      {children || <div>Loading...</div>}
+    </AuthContext.Provider>
   );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
-  }
+
+  if (!context) return {};
+
   return context;
 };

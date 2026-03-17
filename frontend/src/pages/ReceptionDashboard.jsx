@@ -6,7 +6,8 @@ import {
   getDoctors,
   registerPatientByReception,
   searchPatients,
-  getTodayAppointments
+  getTodayAppointments,
+  getHospitalById
 } from "../services/api";
 import DashboardLayout from "../components/DashboardLayout";
 import { useAuth } from "../context/AuthContext";
@@ -14,9 +15,12 @@ import toast from "react-hot-toast";
 import StatsCard from "../components/StatsCard";
 import StatsSkeleton from "../components/StatsSkeleton";
 import { formatDepartment, formatDoctorName, formatName } from "../utils/format";
+import socket from "../socket";
+import EmergencyBadge from "../components/EmergencyBadge";
+import { getPriorityColor, getPriorityLabel, isEmergency } from "../utils/priority";
 
 const ReceptionDashboard = () => {
-  const { token } = useAuth();
+  const { token, hospitalId } = useAuth();
   const [patientQuery, setPatientQuery] = useState("");
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -34,6 +38,7 @@ const ReceptionDashboard = () => {
   const [creating, setCreating] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [priority, setPriority] = useState("5");
   const [registerForm, setRegisterForm] = useState({
     name: "",
     age: "",
@@ -48,6 +53,11 @@ const ReceptionDashboard = () => {
     waiting: "—"
   });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [hospitalName, setHospitalName] = useState("");
+
+  const sortedTodayAppointments = [...todayAppointments].sort(
+    (a, b) => (a.queueNumber || 0) - (b.queueNumber || 0)
+  );
 
   const fetchStats = async () => {
     if (!token) return;
@@ -103,6 +113,16 @@ const ReceptionDashboard = () => {
     }
   };
 
+  const fetchHospitalName = async () => {
+    if (!token || !hospitalId) return;
+    try {
+      const data = await getHospitalById(hospitalId, token);
+      setHospitalName(data.data?.name || "");
+    } catch (error) {
+      toast.error("Failed to load hospital");
+    }
+  };
+
   const handleAppointmentChange = (event) => {
     setAppointmentForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));
   };
@@ -120,7 +140,8 @@ const ReceptionDashboard = () => {
       const payload = {
         patientHealthId: appointmentForm.patientHealthId,
         doctorId: appointmentForm.doctorId,
-        date: new Date(appointmentForm.date).toISOString()
+        date: new Date(appointmentForm.date).toISOString(),
+        priorityScore: Number(priority)
       };
       const data = await createAppointment(payload, token);
       toast.success("Appointment created successfully");
@@ -202,6 +223,31 @@ const ReceptionDashboard = () => {
     fetchStats();
     fetchDoctors();
     fetchTodayAppointments();
+    fetchHospitalName();
+  }, [token]);
+
+  useEffect(() => {
+    const handleAppointmentCreated = (data) => {
+      if (data?.hospitalId && hospitalId && data.hospitalId === hospitalId) {
+        fetchTodayAppointments();
+        fetchStats();
+      }
+    };
+
+    const handleAppointmentCheckedIn = (data) => {
+      if (data?.hospitalId && hospitalId && data.hospitalId === hospitalId) {
+        fetchTodayAppointments();
+        fetchStats();
+      }
+    };
+
+    socket.on("appointmentCreated", handleAppointmentCreated);
+    socket.on("appointmentCheckedIn", handleAppointmentCheckedIn);
+
+    return () => {
+      socket.off("appointmentCreated", handleAppointmentCreated);
+      socket.off("appointmentCheckedIn", handleAppointmentCheckedIn);
+    };
   }, [token]);
 
   useEffect(() => {
@@ -289,6 +335,11 @@ const ReceptionDashboard = () => {
         {!token && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
             Please log in as a receptionist to manage appointments.
+          </div>
+        )}
+        {hospitalName && (
+          <div className="text-xl font-bold mb-4 text-slate-900">
+            {hospitalName.toUpperCase()}
           </div>
         )}
 
@@ -483,6 +534,16 @@ const ReceptionDashboard = () => {
               onChange={handleAppointmentChange}
               required
             />
+            <select
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              value={priority}
+              onChange={(event) => setPriority(event.target.value)}
+            >
+              <option value="2">Low</option>
+              <option value="5">Medium</option>
+              <option value="8">High</option>
+              <option value="10">Emergency</option>
+            </select>
             <button
               className={`rounded-lg px-4 py-2 text-sm font-semibold ${
                 !selectedPatient || !selectedDoctor
@@ -507,7 +568,7 @@ const ReceptionDashboard = () => {
 
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <h2 className="text-lg font-semibold mb-4">Today's Queue</h2>
-          {todayAppointments.length === 0 ? (
+          {sortedTodayAppointments.length === 0 ? (
             <p className="text-sm text-slate-500">No appointments scheduled today.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -518,14 +579,24 @@ const ReceptionDashboard = () => {
                     <th className="py-2">Patient</th>
                     <th className="py-2">Doctor</th>
                     <th className="py-2">Status</th>
+                    <th className="py-2">Queue</th>
                     <th className="py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {todayAppointments.map((appointment) => (
+                  {sortedTodayAppointments.map((appointment) => (
                     <tr key={appointment._id} className="border-b last:border-b-0">
                       <td className="py-2">{formatTime(appointment.time)}</td>
-                      <td className="py-2">{formatName(appointment.patientName || "Unknown")}</td>
+                      <td
+                        className={`py-2 ${
+                          isEmergency(appointment.priorityScore || 0)
+                            ? "bg-red-50 border-l-4 border-red-400 pl-3"
+                            : ""
+                        }`}
+                      >
+                        {formatName(appointment.patientName || "Unknown")}
+                        <EmergencyBadge priorityScore={appointment.priorityScore || 0} />
+                      </td>
                       <td className="py-2">
                         {formatDoctorName(appointment.doctorName || "Unknown")}
                       </td>
@@ -537,7 +608,21 @@ const ReceptionDashboard = () => {
                         >
                           {appointment.status}
                         </span>
+                        {appointment.status === "checked-in" && (
+                          <span className="ml-2 rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+                            Checked-in
+                          </span>
+                        )}
+                        <span
+                          className={`ml-2 px-2 py-1 rounded text-xs text-white ${getPriorityColor(
+                            appointment.priorityScore || 0
+                          )}`}
+                        >
+                          {getPriorityLabel(appointment.priorityScore || 0)}
+                        </span>
+                        <EmergencyBadge priorityScore={appointment.priorityScore || 0} />
                       </td>
+                      <td className="py-2">Queue #{appointment.queueNumber || "—"}</td>
                       <td className="py-2">
                         <button
                           className={`rounded px-3 py-1 text-xs font-semibold ${

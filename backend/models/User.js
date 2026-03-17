@@ -21,8 +21,13 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["patient", "doctor", "receptionist", "admin"],
+      enum: ["patient", "doctor", "receptionist", "admin", "system_admin"],
       default: "patient"
+    },
+    hospitalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Hospital",
+      default: null
     },
     active: {
       type: Boolean,

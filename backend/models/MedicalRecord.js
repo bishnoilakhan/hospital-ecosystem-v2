@@ -34,6 +34,11 @@ const medicalRecordSchema = new mongoose.Schema(
     date: {
       type: Date,
       default: Date.now
+    },
+    hospitalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Hospital",
+      required: true
     }
   },
   { timestamps: true }
