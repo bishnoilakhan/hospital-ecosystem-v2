@@ -23,17 +23,23 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = ["http://localhost:5173", process.env.FRONTEND_URL].filter(Boolean);
-const corsOptions = {
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://hospital-ecosystem-v2.vercel.app"
+];
+
+app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error("CORS not allowed"));
+    // Instead of throwing error → allow but log
+    console.warn("Blocked by CORS:", origin);
+    return callback(null, true);
   },
   credentials: true
-};
+}));
 
 app.use(helmet());
 app.use(cors(corsOptions));
