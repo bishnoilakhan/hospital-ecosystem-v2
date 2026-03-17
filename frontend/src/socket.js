@@ -1,5 +1,5 @@
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:5001");
+const socket = io("https://hospital-ecosystem-v2.onrender.com");
 
 export default socket;
